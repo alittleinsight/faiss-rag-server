@@ -1,0 +1,1 @@
+from .api_endpoints import router as api_router  # re-export for easy include

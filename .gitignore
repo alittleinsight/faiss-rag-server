@@ -1,0 +1,21 @@
+# Logs
+logs
+*.log
+
+# directories
+.backup/
+__pycache__/
+.continue/
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+faiss-rad-server.code-workspace
+
+# IDE files
+.vscode/
+.idea/
+.devcontainer/

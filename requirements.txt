@@ -1,0 +1,10 @@
+fastapi==0.115.2
+uvicorn[standard]==0.32.0
+langchain>=1.0.8,<2.0.0  # Latest stable 1.0 series
+langchain-community>=0.3.19,<1.0.0  # Matches new core
+langchain-huggingface>=1.1.0,<2.0.0
+pypdf==5.0.1
+python-multipart==0.0.9
+anyio
+sentence-transformers>=2.5.0
+# PyTorch nightly handled in Dockerfile – no lines here
