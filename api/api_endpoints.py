@@ -6,7 +6,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi import FastAPI, UploadFile, File, HTTPException
 
-from rag.docHandlers import retrieve_context, rag_list_documents, rag_upload_document, rag_delete_document, DOCUMENTS_PATH
+from rag.docHandlers import rag_retrieve_context, rag_list_documents, rag_upload_document, rag_delete_document, DOCUMENTS_PATH
+from rag.index import TOP_K
 
 router = APIRouter()
 
@@ -39,17 +40,30 @@ def delete_document(filename: str):
     return result
 
 @router.get("/api/search")
-def search(q: str, k: int):
+def search(q: str, k: int = TOP_K):
 
-    results, indices, scores = retrieve_context(q, k)
+    results, indices, scores = rag_retrieve_context(q, k)
 
     if not results:
         return {"results": []}
 
+    # Build improved structured JSON results
+    structured_results = []
+    for i, r in enumerate(results):
+        meta = r.get("metadata", {})
+        structured_results.append({
+            "rank": i + 1,
+            "score": scores[i],
+            "source": meta.get("source", "unknown"),
+            "page": meta.get("page", "unknown"),
+            "text": r["text"],
+            "metadata": meta
+        })
+    
     return {
         "query": q,
         "top_k": k,
-        "results": results,     # list of {text, index, score, metadata}
-        "indices": indices,     # list[int]
-        "scores": scores        # list[float]
+        "results": structured_results,     # list of {text, index, score, metadata}
+        #"indices": indices,     # list[int]
+        #"scores": scores        # list[float]
     }

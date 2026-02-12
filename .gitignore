@@ -13,9 +13,14 @@ build/
 
 # Environment variables
 .env
-faiss-rad-server.code-workspace
+faiss-rag-server.code-workspace
 
 # IDE files
 .vscode/
 .idea/
 .devcontainer/
+
+# other files
+*.pdf
+*.faiss
+*.pkl

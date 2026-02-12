@@ -8,8 +8,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from .tool_definitions import TOOL_DEFINITIONS
 from .tool_registry import TOOL_REGISTRY, register_tool
 
-from rag.docHandlers import retrieve_context
-#from rag.models import SERVER_NAME, SERVER_VERSION
+from rag.docHandlers import rag_retrieve_context, rag_list_documents
 
 SERVER_NAME = "faiss-rag-server"
 SERVER_VERSION = "1.0.0"
@@ -19,7 +18,7 @@ router = APIRouter()
 # ---------- SSE ROOT (GET /) ----------
 
 @router.get("/mcp")
-async def vscode_sse_root():
+async def mcp_init():
     async def event_stream():
         # Initial connection event
         yield 'data: {"type":"connected"}\n\n'
@@ -38,7 +37,7 @@ async def vscode_sse_root():
 # ---------- MCP DISPATCHER (POST /) ----------
 
 @router.post("/mcp")
-async def vscode_mcp_root(req: Dict[str, Any]):
+async def mcp_dispatcher(req: Dict[str, Any]):
     method = req.get("method")
     params = req.get("params", {})
     req_id = req.get("id")
@@ -58,30 +57,30 @@ async def vscode_mcp_root(req: Dict[str, Any]):
                     "tools": {
                         "list": {},
                         "call": {}
-                },
+                }#,
                 #"resources": None,
-                "roots": {
-                    "listChanged": True
-                },
-                "sampling": {},
-                "elicitation": {
-                    "form": {},
-                    "url": {}
-                },
-                "tasks": {
-                    "list": {},
-                    "cancel": {},
-                    "run": {},
-                    "progress": {},
-                    "requests": {
-                        "sampling": {
-                            "createMessage": {}
-                        },
-                        "elicitation": {
-                            "create": {}
-                        }
-                    }
-                }
+#                "roots": {
+#                    "listChanged": True
+#                },
+#                "sampling": {},
+#                "elicitation": {
+#                    "form": {},
+#                    "url": {}
+#                },
+#                "tasks": {
+#                    "list": {},
+#                    "cancel": {},
+#                    "run": {},
+#                    "progress": {},
+#                    "requests": {
+#                        "sampling": {
+#                            "createMessage": {}
+#                        },
+#                        "elicitation": {
+#                            "create": {}
+#                        }
+#                    }
+#                }
             }
         }
     }
@@ -149,8 +148,10 @@ def tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
     # Validate input
     if not isinstance(query, str):
         return {
-            "content": [
-                {"type": "text", "text": "Error: missing or invalid 'query' field"}
+            "content": [{
+                    "type": "text", 
+                    "text": "Error: missing or invalid 'query' field"
+                }
             ]
         }
 
@@ -159,13 +160,15 @@ def tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
             top_k = int(top_k)
         except Exception:
             return {
-                "content": [
-                    {"type": "text", "text": "Error: 'top_k' must be an integer"}
+                "content": [{
+                        "type": "text", 
+                        "text": "Error: 'top_k' must be an integer"
+                    }
                 ]
             }
 
     # Retrieve FAISS results
-    results, indices, scores = retrieve_context(query, top_k)
+    results, indices, scores = rag_retrieve_context(query, top_k)
 
     # Build summary text
     summary_lines = []
@@ -198,12 +201,23 @@ def tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
         for r in results
     )
 
+    # Build improved structured JSON results
+    structured_results = []
+    for i, r in enumerate(results):
+        meta = r.get("metadata", {})
+        structured_results.append({
+            "rank": i + 1,
+            "score": scores[i],
+            "source": meta.get("source", "unknown"),
+            "page": meta.get("page", "unknown"),
+            "text": r["text"],
+            "metadata": meta
+        })
+
     json_block = json.dumps({
         "query": query,
         "top_k": top_k,
-        "results": results,
-        "indices": indices,
-        "scores": scores
+        "results": structured_results
     }, indent=2)
 
     return {
@@ -223,35 +237,15 @@ def tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
         ]
     }
 
-
-#@register_tool("retrieve_context")
-def old_tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
-    query = params.get("query")
-    top_k = params.get("top_k", 5)
-
-    # Validate types for static analysis + runtime safety
-    if not isinstance(query, str):
-        return {
-            "type": "error",
-            "error": "Invalid or missing 'query' field"
-        }
-    if not isinstance(top_k, int):
-        try:
-            top_k = int(top_k)
-        except Exception:
-            return {
-                "type": "error",
-                "error": "'top_k' must be an integer"
-            }
-        
-    # Now Pylance knows query is str and top_k is int
-    results, indices, scores = retrieve_context(query, top_k)
-
+@register_tool("list_documents")
+def tool_list_documents(params: Dict[str, Any]) -> Dict[str, Any]:
+    docs = rag_list_documents()
     return {
-        "query": query,
-        "top_k": top_k,
-        "results": results,     # list of {text, index, score, metadata}
-        "indices": indices,     # list[int]
-        "scores": scores        # list[float]
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(docs, indent=2)
+            }
+        ]
     }
 

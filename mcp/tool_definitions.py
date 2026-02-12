@@ -21,6 +21,15 @@ TOOL_DEFINITIONS = {
                 "required": ["query"],
                 "additionalProperties": False
             }
+        },
+        {
+            "name": "list_documents",
+            "description": "List all documents",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False
+            }
         }
     ]
 }

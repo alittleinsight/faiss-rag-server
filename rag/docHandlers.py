@@ -7,7 +7,7 @@ from . import index as index_module
 
 
 # Helper: centralize retrieval logic for RAG
-def retrieve_context(query: str, k: int = TOP_K):
+def rag_retrieve_context(query: str, k: int = TOP_K):
     if not index_module.index or len(index_module.texts) == 0:
         return [], [], []
 
@@ -35,7 +35,18 @@ def retrieve_context(query: str, k: int = TOP_K):
 
 # return list of indexed document filenames
 def rag_list_documents():
-    return {"documents": sorted({Path(m.get("source", "")).name for m in index_module.metadatas if "source" in m})}
+    docs = sorted({
+        Path(m.get("source", "")).name
+        for m in index_module.metadatas
+        if "source" in m
+    })
+
+    return {
+        "documents": docs,
+        "count": len(docs)
+    }
+#def rag_list_documents():
+#    return {"documents": sorted({Path(m.get("source", "")).name for m in index_module.metadatas if "source" in m})}
 
 def rag_upload_document():
     rebuild_index_from_disk()
