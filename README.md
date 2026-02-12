@@ -135,7 +135,7 @@ TOP_K = 3
 ```
 
 **Want bigger context or different model?**  
-Just change `EMBEDDING_MODEL` to any Hugging Face sentence transformer (e.g., `BAAI/bge-small-en-v1.5` for better accuracy).
+Just change `EMBEDDING_MODEL` to any Hugging Face sentence transformer (currently running, `BAAI/bge-large-en-v1.5` for better accuracy).
 
 ## Project Structure
 
