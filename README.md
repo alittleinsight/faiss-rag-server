@@ -37,7 +37,7 @@ docker compose up -d
 ```
 
 **Open in browser:**
-- Dashboard & upload: http://localhost:8004/dashboard
+- Dashboard to upload and delete documents: http://localhost:8004/dashboard
 - Full API docs: http://localhost:8004/docs
 - MCP: http://localhost:8004/mcp
 
@@ -92,6 +92,28 @@ curl -X POST \
    }
 }'
 ```
+
+## Check mcp operation with mcpinspector
+
+https://modelcontextprotocol.io/docs/tools/inspector#python
+https://github.com/modelcontextprotocol/inspector
+
+``` bash
+docker run --rm \
+  -p 127.0.0.1:6274:6274 \
+  -p 127.0.0.1:6277:6277 \
+  -e HOST=0.0.0.0 \
+  -e MCP_AUTO_OPEN_ENABLED=false \
+  ghcr.io/modelcontextprotocol/inspector:latest
+```
+When it starts, you’ll see:
+A session token printed in the logs
+(you must paste this into the UI unless you use the pre-filled URL)
+
+A link like:
+http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=...
+
+Open that URL and you’re in.
 
 ## Configuration
 
