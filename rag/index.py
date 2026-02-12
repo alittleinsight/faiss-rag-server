@@ -19,8 +19,8 @@ DOCUMENTS_PATH = Path("./documents")
 VECTORSTORE_PATH = Path("./vectorstore")
 VECTORSTORE_PATH.mkdir(exist_ok=True)
 
-CHUNK_SIZE = 1500
-CHUNK_OVERLAP = 200
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 100
 TOP_K = 3
 
 index: Optional[faiss.Index] = None

@@ -57,30 +57,7 @@ async def mcp_dispatcher(req: Dict[str, Any]):
                     "tools": {
                         "list": {},
                         "call": {}
-                }#,
-                #"resources": None,
-#                "roots": {
-#                    "listChanged": True
-#                },
-#                "sampling": {},
-#                "elicitation": {
-#                    "form": {},
-#                    "url": {}
-#                },
-#                "tasks": {
-#                    "list": {},
-#                    "cancel": {},
-#                    "run": {},
-#                    "progress": {},
-#                    "requests": {
-#                        "sampling": {
-#                            "createMessage": {}
-#                        },
-#                        "elicitation": {
-#                            "create": {}
-#                        }
-#                    }
-#                }
+                }
             }
         }
     }
@@ -139,7 +116,7 @@ async def mcp_dispatcher(req: Dict[str, Any]):
         }
     }
 
-# ---------- TOOL IMPLEMENTATIONS (VS Code path) ----------
+# ---------- TOOL IMPLEMENTATIONS ----------
 @register_tool("retrieve_context")
 def tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
     query = params.get("query")
@@ -221,7 +198,7 @@ def tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
     }, indent=2)
 
     return {
-        "content": [
+        "content": [ # continue.dev will fail if the type is "json" or if we try to return the list directly, so we stringify it as text
             {
                 "type": "text",
                 "text": (
@@ -241,9 +218,9 @@ def tool_retrieve_context(params: Dict[str, Any]) -> Dict[str, Any]:
 def tool_list_documents(params: Dict[str, Any]) -> Dict[str, Any]:
     docs = rag_list_documents()
     return {
-        "content": [
+        "content": [ # continue.dev will fail if the type is "json" or if we try to return the list directly, so we stringify it as text
             {
-                "type": "text",
+                "type": "text", 
                 "text": json.dumps(docs, indent=2)
             }
         ]
