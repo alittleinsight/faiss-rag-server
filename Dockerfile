@@ -1,21 +1,22 @@
 # Dockerfile – PyTorch Nightly for sm_120 (No cuDNN Upgrade Needed)
 FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
 
-# System deps
-RUN apt-get update && apt-get install -y --no-install-recommends git curl && \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Non-root user
+# Create non-root user
 ARG USERNAME=appuser
 ARG USER_UID=1000
 RUN groupadd --gid $USER_UID $USERNAME && \
     useradd --uid $USER_UID --gid $USER_UID -m $USERNAME
 
-# === ROOT: Uninstall stable PyTorch ===
+# Switch to root to uninstall stable PyTorch
 USER root
 RUN pip uninstall -y torch torchvision torchaudio || true
 
-# === Back to non-root ===
+# Switch back to non-root user
 USER $USERNAME
 ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/opt/conda/lib:${LD_LIBRARY_PATH}"
@@ -29,12 +30,12 @@ RUN pip install --no-cache-dir --user --pre \
 # Install FAISS-GPU
 RUN pip install --no-cache-dir --user faiss-gpu-cu12==1.12.0
 
-# Other deps
+# Install Python dependencies
 COPY --chown=$USERNAME:$USERNAME requirements.txt .
 RUN pip install --no-cache-dir --user --upgrade pip && \
     pip install --no-cache-dir --user -r requirements.txt
 
-# Verify PyTorch nightly + sm_120 (no cuDNN error)
+# Verify PyTorch and FAISS installation
 RUN python - <<'PY'
 import torch
 print("PyTorch nightly:", torch.__version__)
@@ -50,10 +51,13 @@ else:
     print("  No CUDA devices visible")
 PY
 
-# Verify FAISS
 RUN python -c "import faiss; print('FAISS GPUs:', faiss.get_num_gpus())"
 
+# Copy application files
 COPY --chown=$USERNAME:$USERNAME . .
 
+# Expose application port
 EXPOSE 8004
+
+# Default command to run the application
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8004"]

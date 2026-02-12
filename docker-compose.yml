@@ -7,28 +7,29 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=ALL
       - CUDA_VISIBLE_DEVICES=1
-      - CUDA_LAUNCH_BLOCKING=1
+      #- CUDA_LAUNCH_BLOCKING=1
     volumes:
       - .:/workspace:cached
       - ./documents:/workspace/documents
       - ./vectorstore:/workspace/vectorstore
     ports:
-      - "8004:8004"
-      - "5678:5678"
+      - "8004:8004"  # Application port
+      - "5678:5678"  # Debugger port
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
-              # device_ids: ['1']              
+              #count: all
+              device_ids: ['0']              
               capabilities: [gpu]
-    # Add entrypoint for GPU diagnostics
     entrypoint: >
-          /bin/bash -c "
-          echo '=== GPU Diagnostics ===';
-          nvidia-smi;
-          python -c 'import torch, faiss; print(\"PyTorch sees\", torch.cuda.device_count(), \"GPUs\"); print(\"FAISS sees\", faiss.get_num_gpus(), \"GPUs\")';
-          echo '=== Starting RAG server ===';
-          exec uvicorn app:app --host 0.0.0.0 --port 8004
-          "
+      /bin/bash -c "
+      echo '=== GPU Diagnostics ===';
+      nvidia-smi;
+      python -c 'import torch, faiss; \
+      print(\"PyTorch sees\", torch.cuda.device_count(), \"GPUs\"); \
+      print(\"FAISS sees\", faiss.get_num_gpus(), \"GPUs\")';
+      echo '=== Starting RAG server ===';
+      exec uvicorn app:app --host 0.0.0.0 --port 8004
+      "

@@ -14,7 +14,7 @@ TOOL_DEFINITIONS = {
                     },
                     "top_k": {
                         "type": "integer",
-                        "default": 5,
+                        "default": 3,
                         "description": "Number of top results to return."
                     }
                 },
