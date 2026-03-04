@@ -7,4 +7,6 @@ pypdf==5.0.1
 python-multipart==0.0.9
 anyio
 sentence-transformers>=2.5.0
+unstructured>=0.16.8
+Markdown>=3.7
 # PyTorch nightly handled in Dockerfile – no lines here

@@ -1,7 +1,7 @@
 import numpy as np
 
 from pathlib import Path
-from .embeddings import embeddings
+#from .embeddings import embeddings
 from .index import rebuild_index_from_disk, rebuild_index_from_memory, DOCUMENTS_PATH, TOP_K
 from . import index as index_module
 
@@ -11,7 +11,7 @@ def rag_retrieve_context(query: str, k: int = TOP_K):
     if not index_module.index or len(index_module.texts) == 0:
         return [], [], []
 
-    q_vec = np.array(embeddings.embed_query(query)).astype("float32").reshape(1, -1)
+    q_vec = np.array(index_module.embeddings.embed_query(query)).astype("float32").reshape(1, -1)
 
     k = min(k, len(index_module.texts))
     D, I = index_module.index.search(q_vec, k)
@@ -45,8 +45,6 @@ def rag_list_documents():
         "documents": docs,
         "count": len(docs)
     }
-#def rag_list_documents():
-#    return {"documents": sorted({Path(m.get("source", "")).name for m in index_module.metadatas if "source" in m})}
 
 def rag_upload_document():
     rebuild_index_from_disk()

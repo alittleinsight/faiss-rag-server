@@ -179,10 +179,6 @@ faiss-rag-server/
 ## Future (Dec 2025+)
 
 - Full RTX 5060 Ti (Blackwell) support with PyTorch 2.7
-- Variable chunk and overlap sizing based on doc type
-- Include a Reranker
-- Include a Sumarizer
-- Expand the embeddings to bo multimodal (audio and image)
 
 
 Enjoy!

@@ -5,9 +5,13 @@ services:
     build: .
     runtime: nvidia
     environment:
-      - NVIDIA_VISIBLE_DEVICES=ALL
-      - CUDA_VISIBLE_DEVICES=1
+      #- NVIDIA_VISIBLE_DEVICES=ALL
+      #- CUDA_VISIBLE_DEVICES=1
       #- CUDA_LAUNCH_BLOCKING=1
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
+      - RAG_USE_GPU=${RAG_USE_GPU:-true}
+      - RAG_GPU_INDEX=${RAG_GPU_INDEX:-}
     volumes:
       - .:/workspace:cached
       - ./documents:/workspace/documents
@@ -20,8 +24,8 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              #count: all
-              device_ids: ['0']              
+              count: all
+              #device_ids: ['0']              
               capabilities: [gpu]
     entrypoint: >
       /bin/bash -c "

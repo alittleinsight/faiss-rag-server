@@ -13,11 +13,16 @@ from langchain_community.document_loaders import (
     TextLoader,
 )
 
-from .embeddings import embeddings, useGpu as USE_GPU, gpuIndex as GPU_INDEX_NUM
+from .embeddings import (
+    embeddings, 
+    useGpu as USE_GPU, 
+    gpuIndex as GPU_INDEX_NUM,
+)
 
 DOCUMENTS_PATH = Path("./documents")
 VECTORSTORE_PATH = Path("./vectorstore")
 VECTORSTORE_PATH.mkdir(exist_ok=True)
+MIN_TRAINING_POINTS_PER_CENTEROID = 39
 
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100
@@ -27,6 +32,46 @@ index: Optional[faiss.Index] = None
 texts = []
 metadatas = []
 
+def choose_nlist(num_vectors: int) -> int:
+    if num_vectors < 0:
+        return 1
+    
+    raw_nlist = max(1, int(np.sqrt(num_vectors)))
+    capped_nlist = max(1, num_vectors // MIN_TRAINING_POINTS_PER_CENTEROID)
+    final_nlist = min(raw_nlist, capped_nlist)
+
+    if final_nlist < raw_nlist:
+        print(
+            f"Auto-capping nlist from {raw_nlist } to {final_nlist} "
+            f"for {num_vectors} training vectors"
+        )
+
+    return final_nlist  
+
+def build_ivf_index(vectors: np.ndarray, nlist: int):
+    dim = vectors.shape[1]
+    quantizer = faiss.IndexFlatIP(dim)
+    cpu_index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
+
+    if USE_GPU:
+        try:
+            faiss_gpu_count = faiss.get_num_gpus() if hasattr(faiss, "get_num_gpus") else 0
+            if faiss_gpu_count == 0:
+                raise RuntimeError(f"Requested FAISS GPU index {GPU_INDEX_NUM} but only {faiss_gpu_count} FAISS GPUs are visible")
+
+            res = faiss.StandardGpuResources()
+            gpu_index = faiss.index_cpu_to_gpu(res, GPU_INDEX_NUM, cpu_index)
+            gpu_index.train(vectors)
+            gpu_index.add(vectors)
+            print(f"Built FAISS index on GPU {GPU_INDEX_NUM}")
+            return gpu_index
+        except Exception as e:
+            print(f"GPU index build failed, {e} falling back to CPU!")
+
+    cpu_index.train(vectors)
+    cpu_index.add(vectors)
+    print("Built FAISS index on CPU (safe fallback)")
+    return cpu_index
 
 # ------------------- Index Management -------------------
 def load_or_rebuild_index():
@@ -73,24 +118,8 @@ def rebuild_index_from_disk():
     chunks = splitter.split_documents(docs)
     vectors = np.array(embeddings.embed_documents([c.page_content for c in chunks])).astype("float32")
 
-    dim = vectors.shape[1]
-    nlist = max(1, int(np.sqrt(len(chunks))))
-    quantizer = faiss.IndexFlatIP(dim)
-    cpu_index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
-
-    # if torch.cuda.is_available():
-    if USE_GPU:
-        print(f"Index rebuilt: {len(chunks)} chunks on RTX GPU {GPU_INDEX_NUM}")
-        res = faiss.StandardGpuResources()
-        gpu_index = faiss.index_cpu_to_gpu(res, GPU_INDEX_NUM, cpu_index)
-        gpu_index.train(vectors)
-        gpu_index.add(vectors)
-        index = gpu_index
-    else:
-        print(f"Index rebuilt: {len(chunks)} chunks on CPU")
-        cpu_index.train(vectors)
-        cpu_index.add(vectors)
-        index = cpu_index
+    nlist = choose_nlist(len(chunks))
+    index = build_ivf_index(vectors, nlist)
 
     # Save FAISS index — works for both GPU and CPU indexes
     if getattr(index, "is_gpu", False):  # Modern faiss-gpu-cu12
@@ -121,24 +150,8 @@ def rebuild_index_from_memory(new_texts, new_metadatas):
         return
 
     vectors = np.array(embeddings.embed_documents(texts)).astype("float32")
-    dim = vectors.shape[1]
-    nlist = max(1, int(np.sqrt(len(texts))))
-    quantizer = faiss.IndexFlatIP(dim)
-    cpu_index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
-
-    # if torch.cuda.is_available():
-    if USE_GPU:
-        print("Building FAISS index on GPU")
-        res = faiss.StandardGpuResources()
-        gpu_index = faiss.index_cpu_to_gpu(res, GPU_INDEX_NUM, cpu_index)
-        gpu_index.train(vectors)
-        gpu_index.add(vectors)
-        index = gpu_index
-    else:
-        print("Building FAISS index on CPU (safe fallback)")
-        cpu_index.train(vectors)
-        cpu_index.add(vectors)
-        index = cpu_index
+    nlist = choose_nlist(len(texts))
+    index = build_ivf_index(vectors, nlist)
 
     # Save FAISS index — works for both GPU and CPU indexes
     if getattr(index, "is_gpu", False):  # Modern faiss-gpu-cu12
