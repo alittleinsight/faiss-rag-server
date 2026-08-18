@@ -17,6 +17,21 @@ USER $USERNAME
 ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 WORKDIR /workspace
 
+# -------------------------------
+# Install PyTorch 2.5.1 (required by Transformers)
+# -------------------------------
+RUN pip install --no-cache-dir --user --upgrade pip && \
+    pip install --no-cache-dir --user --break-system-packages \
+        torch==2.5.1 \
+        torchvision \
+        torchaudio \
+        --index-url https://download.pytorch.org/whl/cu121
+
+# -------------------------------
+# Disable xformers (your GPU is compute capability 12.0)
+# -------------------------------
+ENV XFORMERS_DISABLED=1
+
 # Install FAISS CPU (stable); embeddings still use GPU via PyTorch
 #RUN pip install --no-cache-dir --user faiss-cpu==1.8.0.post1
 RUN pip install --no-cache-dir 'faiss-gpu-cu12[fix-cuda]'
