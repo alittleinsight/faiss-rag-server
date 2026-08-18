@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Local RAG Server</title>
+  <meta charset="utf-8">
+  <style>
+    body{font-family:system-ui;max-width:900px;margin:40px auto;padding:20px;background:#fafafa}
+    h1{color:#2c7}
+    a{color:#07a;text-decoration:none}
+    .box{background:#fff;padding:24px;border-radius:12px;margin:24px 0;box-shadow:0 4px 12px rgba(0,0,0,0.05)}
+    code{background:#f0f0f0;padding:12px 16px;display:block;font-size:1.1em;border-radius:8px}
+    table{width:100%;border-collapse:collapse;margin-top:16px}
+    th, td{padding:12px;text-align:left;border-bottom:1px solid #eee}
+    th{background:#f7f7f7}
+    .path-cell{max-width:360px}
+    .path-row{display:flex;align-items:center;gap:8px;min-width:0}
+    .path-text{font-size:12px;color:#333;display:inline-block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    .btn{padding:10px 20px;border:none;border-radius:8px;font-size:15px;cursor:pointer;margin:8px 8px 8px 0;font-weight:600}
+    .btn-add{background:#2c7;color:white}
+    .btn-add:hover{background:#1a5}
+    .btn-delete{background:#c33;color:white;font-size:13px;padding:6px 12px}
+    .btn-delete:hover{background:#a00}
+    .btn-copy{background:#eef3f8;color:#245;font-size:12px;padding:6px 10px;border:1px solid #d7e1ea}
+    .btn-copy:hover{background:#dde8f2}
+    .status{margin-top:12px;font-size:14px;color:#555}
+    .progress{display:none;margin-top:12px;color:#2c7;font-weight:600}
+  </style>
+</head>
+<body>
+  <h1>Local RAG Server</h1>
+  <p>Your private document brain</p>
+
+  <div class="box">
+    <h2>Add Documents</h2>
+    <div style="margin-top:10px">
+      <input type="text" id="source-path-input" placeholder="Source path (e.g. /workspace/documents/policy.pdf or documents/policy.pdf)" style="padding:10px;font-size:14px;width:100%;max-width:500px">
+    </div>
+    <button id="add-path-btn" class="btn btn-add">Add from Path</button>
+    <div class="progress" id="progress">Indexing document from path... Please wait</div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="box">
+    <h2>Indexed Documents</h2>
+    <div id="doc-list">Loading...</div>
+  </div>
+
+  <div class="box">
+    <h2>MCP Compatible</h2>
+    <p>Base URL: <code>http://localhost:8004/mcp</code></p>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const progressEl = document.getElementById('progress');
+    const docListEl = document.getElementById('doc-list');
+    let deleteInProgress = false;
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    async function copyPath(path) {
+      try {
+        await navigator.clipboard.writeText(path);
+        statusEl.innerHTML = `<span style="color:green">Copied path: ${escapeHtml(path)}</span>`;
+      } catch {
+        statusEl.innerHTML = '<span style="color:red">Could not copy path to clipboard.</span>';
+      }
+    }
+
+    async function loadDocuments() {
+      if (deleteInProgress) {
+        return;
+      }
+      try {
+        const resp = await fetch('/api/documents');
+        const data = await resp.json();
+        if (!data.documents || data.documents.length === 0) {
+          docListEl.innerHTML = '<em>No documents indexed yet.</em>';
+          return;
+        }
+
+        let html = '<table><thead><tr><th>Source</th><th style="width:130px">Index Action</th></tr></thead><tbody>';
+        const documents = [...data.documents].sort((a, b) => {
+          const aName = (a && a.filename) ? a.filename.toLowerCase() : '';
+          const bName = (b && b.filename) ? b.filename.toLowerCase() : '';
+          return aName.localeCompare(bName);
+        });
+
+        for (const doc of documents) {
+          const filename = doc?.filename || '';
+          const sourcePath = doc?.source_path || '';
+          if (!sourcePath) {
+            continue;
+          }
+
+          const escapedPath = escapeHtml(sourcePath);
+          html += `<tr>
+            <td class="path-cell">
+              <div class="path-row">
+                <span class="path-text" title="${escapedPath}">${escapedPath}</span>
+                <button class="btn btn-copy" onclick='copyPath(${JSON.stringify(sourcePath)})'>Copy</button>
+              </div>
+            </td>
+            <td>
+              <button class="btn btn-delete" onclick='deleteDoc(${JSON.stringify(sourcePath)}, ${JSON.stringify(filename)}, this)'>
+                Remove
+              </button>
+            </td>
+          </tr>`;
+        }
+
+        html += '</tbody></table>';
+        docListEl.innerHTML = html;
+      } catch {
+        docListEl.innerHTML = '<em>Error loading documents</em>';
+      }
+    }
+
+    async function deleteDoc(sourcePath, displayName, buttonEl) {
+      const name = displayName || sourcePath;
+      if (!confirm(`Remove "${name}" from the FAISS index?\n\nThe source file will remain on disk.`)) {
+        return;
+      }
+
+      deleteInProgress = true;
+      if (buttonEl) {
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Removing...';
+      }
+
+      try {
+        const url = `/api/document?source_path=${encodeURIComponent(sourcePath)}`;
+        const r = await fetch(url, { method: 'DELETE' });
+        const j = await r.json();
+
+        if (r.ok) {
+          const rowEl = buttonEl ? buttonEl.closest('tr') : null;
+          if (rowEl) {
+            rowEl.remove();
+          }
+
+          const remainingRows = docListEl.querySelectorAll('tbody tr').length;
+          if (remainingRows === 0) {
+            docListEl.innerHTML = '<em>No documents indexed yet.</em>';
+          }
+
+          statusEl.innerHTML = `<span style="color:green">Removed from index: ${escapeHtml(sourcePath)} (chunks removed: ${j.chunks_removed}). Source file kept on disk.</span>`;
+        } else {
+          if (buttonEl) {
+            buttonEl.disabled = false;
+            buttonEl.textContent = 'Remove';
+          }
+          statusEl.innerHTML = `<span style="color:red">Delete failed: ${escapeHtml(j.detail || r.statusText)}</span>`;
+        }
+      } catch (e) {
+        if (buttonEl) {
+          buttonEl.disabled = false;
+          buttonEl.textContent = 'Remove';
+        }
+        statusEl.innerHTML = `<span style="color:red">Network error during delete: ${escapeHtml(String(e))}</span>`;
+      } finally {
+        deleteInProgress = false;
+      }
+    }
+
+    document.getElementById('add-path-btn').addEventListener('click', async () => {
+      const sourcePathInput = document.getElementById('source-path-input');
+      const sourcePath = sourcePathInput.value.trim();
+      if (!sourcePath) {
+        statusEl.textContent = 'Please enter a source path';
+        return;
+      }
+
+      progressEl.style.display = 'block';
+      statusEl.textContent = 'Validating and indexing source path...';
+
+      const formData = new FormData();
+      formData.append('source_path', sourcePath);
+
+      try {
+        const resp = await fetch('/api/add', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await resp.json();
+
+        if (resp.ok) {
+          if (result.skipped) {
+            statusEl.innerHTML = `<span style="color:#8a6d3b">Already indexed: ${escapeHtml(result.added_source_path || sourcePath)}</span>`;
+          } else {
+            statusEl.innerHTML = `<span style="color:green">Success! Indexed source path: ${escapeHtml(result.added_source_path || sourcePath)}</span>`;
+          }
+          sourcePathInput.value = '';
+          loadDocuments();
+        } else {
+          statusEl.innerHTML = `<span style="color:red">Error: ${escapeHtml(result.detail || 'Path indexing failed')}</span>`;
+        }
+      } catch (e) {
+        statusEl.innerHTML = `<span style="color:red">Network error: ${escapeHtml(String(e))}</span>`;
+      } finally {
+        progressEl.style.display = 'none';
+      }
+    });
+
+    loadDocuments();
+    setInterval(loadDocuments, 8004);
+  </script>
+</body>
+</html>

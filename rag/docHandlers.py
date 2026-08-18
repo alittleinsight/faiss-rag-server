@@ -1,88 +1,79 @@
 import numpy as np
 
 from pathlib import Path
-#from .embeddings import embeddings
-from .index import rebuild_index_from_disk, rebuild_index_from_memory, DOCUMENTS_PATH, TOP_K
+from .index import TOP_K
 from . import index as index_module
+
+_documents_cache = {
+    "key": None,
+    "value": None,
+}
 
 
 # Helper: centralize retrieval logic for RAG
 def rag_retrieve_context(query: str, k: int = TOP_K):
-    if not index_module.index or len(index_module.texts) == 0:
+    if not index_module.index or index_module.get_chunk_count() == 0:
         return [], [], []
 
     q_vec = np.array(index_module.embeddings.embed_query(query)).astype("float32").reshape(1, -1)
 
-    k = min(k, len(index_module.texts))
-    D, I = index_module.index.search(q_vec, k)
+    k = min(k, index_module.get_chunk_count())
+    D, I = index_module.search_index(q_vec, k)
 
     results = []
     indices = []
     scores = []
 
-    for score, idx in zip(D[0], I[0]):
-        if 0 <= idx < len(index_module.texts):
-            indices.append(int(idx))
+    for score, chunk_id in zip(D[0], I[0]):
+        chunk_id = int(chunk_id)
+        record = index_module.get_chunk_record(chunk_id)
+        if chunk_id >= 0 and record is not None:
+            indices.append(chunk_id)
             scores.append(float(score))
             results.append({
-                "text": index_module.texts[idx],
-                "index": int(idx),
+                "text": record["text"],
+                "index": chunk_id,
                 "score": float(score),
-                "metadata": index_module.metadatas[idx]
+                "metadata": record["metadata"],
             })
 
     return results, indices, scores
 
 # return list of indexed document filenames
 def rag_list_documents():
-    docs = sorted({
-        Path(m.get("source", "")).name
-        for m in index_module.metadatas
-        if "source" in m
-    })
+    docs = index_module.get_documents_summary()
+    cache_key = tuple((item["source_path"], item.get("chunk_count", 0)) for item in docs["documents"])
+    if _documents_cache["key"] == cache_key and _documents_cache["value"] is not None:
+        return _documents_cache["value"]
 
-    return {
-        "documents": docs,
-        "count": len(docs)
-    }
+    result = docs
+    _documents_cache["key"] = cache_key
+    _documents_cache["value"] = result
 
-def rag_upload_document():
-    rebuild_index_from_disk()
-    # ToDo update return with more useful info
-    return {"status": "success"}
+    return result
+
+def rag_add_document(source_path: str | None = None):
+    if source_path:
+        candidate_path = Path(source_path).expanduser()
+        if not candidate_path.exists():
+            return {
+                "status": "error",
+                "message": f"Document not found at path: {candidate_path}",
+            }
+        if not candidate_path.is_file():
+            return {
+                "status": "error",
+                "message": f"Path is not a file: {candidate_path}",
+            }
+        return index_module.upsert_file_to_index(str(candidate_path))
+    else:
+        return index_module.rebuild_index_from_disk()
+
+
 
 def rag_delete_document(filename: str):
-    #global index, texts, metadatas
-    
-    # 1. Find and remove the physical file
-    file_path = None
-    for p in DOCUMENTS_PATH.rglob(filename):
-        if p.is_file():
-            file_path = p
-            break
-    
-    if file_path:
-        try:
-            file_path.unlink()  # ← PHYSICALLY DELETE THE FILE
-            print(f"Deleted physical file: {file_path}")
-        except Exception as e:
-            print(f"Warning: Could not delete file {file_path}: {e}")
-    else:
-        print(f"File {filename} not found in documents folder (maybe already deleted)")
+    return index_module.delete_document_by_filename(filename)
 
-    # 2. Remove its chunks from the index
-    new_texts, new_metadatas = [], []
-    removed = 0
-    for t, m in zip(index_module.texts, index_module.metadatas):
-        if Path(m.get("source", "")).name == filename:
-            removed += 1
-            continue  # skip this chunk
-        new_texts.append(t)
-        new_metadatas.append(m)
 
-    if removed > 0:
-        # 3. Rebuild index from remaining chunks
-        #texts, metadatas = new_texts, new_metadatas
-        rebuild_index_from_memory(new_texts, new_metadatas)
-
-    return {"deleted": filename, "chunks_removed": removed, "file_removed": bool(file_path)}
+def rag_delete_document_by_source_path(source_path: str):
+    return index_module.delete_document_by_source_path(source_path)

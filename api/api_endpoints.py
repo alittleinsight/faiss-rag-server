@@ -1,31 +1,68 @@
-import anyio
-
 from pathlib import Path
-from unittest import result
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse, JSONResponse
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import APIRouter, Form, HTTPException, Query
 
-from rag.docHandlers import rag_retrieve_context, rag_list_documents, rag_upload_document, rag_delete_document, DOCUMENTS_PATH
+from rag.docHandlers import (
+    rag_add_document,
+    rag_delete_document,
+    rag_delete_document_by_source_path,
+    rag_list_documents,
+    rag_retrieve_context,
+)
 from rag.index import TOP_K
 
 router = APIRouter()
 
-# -----------------------------API endpoints ---------------------------------------------
-@router.post("/api/upload")
-async def upload_file(file: UploadFile = File(...)):
-    save_path = DOCUMENTS_PATH / file.filename
-    if save_path.exists():
-        stem, suffix = save_path.stem, save_path.suffix
-        i = 1
-        while (save_path := DOCUMENTS_PATH / f"{stem}_{i}{suffix}").exists():
-            i += 1
-    content = await file.read()
-    async with await anyio.open_file(save_path, "wb") as f:
-        await f.write(content)
-    rag_upload_document()
 
-    return {"status": "success", "filename": save_path.name}
+def _resolve_source_path_for_container(source_path: str) -> Path:
+    normalized = source_path.strip().replace("\\", "/")
+    workspace_root = Path("/workspace")
+
+    candidates: list[Path] = []
+    raw_candidate = Path(normalized).expanduser()
+    candidates.append(raw_candidate)
+
+    if not raw_candidate.is_absolute():
+        candidates.append((workspace_root / normalized).expanduser())
+
+    repo_marker = "/faiss-rag-server/"
+    lower = normalized.lower()
+    marker_pos = lower.find(repo_marker)
+    if marker_pos != -1:
+        repo_relative = normalized[marker_pos + len(repo_marker):]
+        candidates.append(workspace_root / repo_relative)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return raw_candidate
+
+# -----------------------------API endpoints ---------------------------------------------
+@router.post("/api/add")
+async def add_document(
+    source_path: str | None = Form(default=None),
+):
+    if not source_path:
+        raise HTTPException(400, "source_path is required; file payloads are disabled to avoid copying files")
+
+    if source_path:
+        candidate_path = _resolve_source_path_for_container(source_path)
+        if not candidate_path.exists():
+            raise HTTPException(
+                404,
+                (
+                    f"Document not found at path: {source_path}. "
+                    "For Docker use container-visible paths like '/workspace/documents/your-file.pdf' "
+                    "or relative 'documents/your-file.pdf'."
+                ),
+            )
+        if not candidate_path.is_file():
+            raise HTTPException(400, f"Path is not a file: {candidate_path}")
+
+        result = rag_add_document(source_path=str(candidate_path))
+        if result.get("status") != "success":
+            raise HTTPException(400, result.get("message", "Failed to index file from source path"))
+        return result
 
 @router.get("/api/documents")
 def list_documents():
@@ -35,8 +72,18 @@ def list_documents():
 def delete_document(filename: str):
 
     result = rag_delete_document(filename)
+    if result.get("status") == "ambiguous":
+        raise HTTPException(409, result.get("message", "Filename is ambiguous; delete by source_path"))
     if result.get("chunks_removed", 0) == 0:
         raise HTTPException(404, "File not found in index")
+    return result
+
+
+@router.delete("/api/document")
+def delete_document_by_source_path(source_path: str = Query(...)):
+    result = rag_delete_document_by_source_path(source_path)
+    if result.get("chunks_removed", 0) == 0:
+        raise HTTPException(404, "Document source_path not found in index")
     return result
 
 @router.get("/api/search")

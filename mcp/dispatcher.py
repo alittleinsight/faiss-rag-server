@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from .tool_definitions import TOOL_DEFINITIONS
 from .tool_registry import TOOL_REGISTRY, register_tool
 
-from rag.docHandlers import rag_retrieve_context, rag_list_documents
+from rag.docHandlers import rag_retrieve_context, rag_list_documents, rag_add_document
 
 SERVER_NAME = "faiss-rag-server"
 SERVER_VERSION = "1.0.0"
@@ -222,6 +222,30 @@ def tool_list_documents(params: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "type": "text", 
                 "text": json.dumps(docs, indent=2)
+            }
+        ]
+    }
+
+
+@register_tool("add_document")
+def tool_add_document(params: Dict[str, Any]) -> Dict[str, Any]:
+    source_path = params.get("source_path")
+    if source_path is not None and not isinstance(source_path, str):
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Error: 'source_path' must be a string when provided"
+                }
+            ]
+        }
+
+    result = rag_add_document(source_path=source_path)
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(result, indent=2)
             }
         ]
     }

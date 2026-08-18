@@ -5,15 +5,18 @@ services:
     build: .
     runtime: nvidia
     environment:
-      #- NVIDIA_VISIBLE_DEVICES=ALL
-      #- CUDA_VISIBLE_DEVICES=1
-      #- CUDA_LAUNCH_BLOCKING=1
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       - RAG_USE_GPU=${RAG_USE_GPU:-true}
       - RAG_GPU_INDEX=${RAG_GPU_INDEX:-}
+      - RAG_FAISS_INDEX_DEVICE=${RAG_FAISS_INDEX_DEVICE:-cpu}
+      - RAG_FAISS_SEARCH_DEVICE=${RAG_FAISS_SEARCH_DEVICE:-gpu}
+      - DEFAULT_FAISS_DIM=${DEFAULT_FAISS_DIM:-1024}
+      #- CUDA_LAUNCH_BLOCKING=1
     volumes:
       - .:/workspace:cached
+      - ../:/mounted/repo:ro
+      - ../DocEx/temp:/mounted/temp:rw
       - ./documents:/workspace/documents
       - ./vectorstore:/workspace/vectorstore
     ports:
@@ -25,7 +28,6 @@ services:
           devices:
             - driver: nvidia
               count: all
-              #device_ids: ['0']              
               capabilities: [gpu]
     entrypoint: >
       /bin/bash -c "
@@ -33,7 +35,7 @@ services:
       nvidia-smi;
       python -c 'import torch, faiss; \
       print(\"PyTorch sees\", torch.cuda.device_count(), \"GPUs\"); \
-      print(\"FAISS sees\", faiss.get_num_gpus(), \"GPUs\")';
+      print(\"FAISS sees\", faiss.get_num_gpus(), \"GPUs\")';      
       echo '=== Starting RAG server ===';
       exec uvicorn app:app --host 0.0.0.0 --port 8004
       "
