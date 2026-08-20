@@ -21,6 +21,7 @@ faiss-rag-server.code-workspace
 .devcontainer/
 
 # other files
-*.pdf
 *.faiss
 *.pkl
+documents/
+vectorstore/
